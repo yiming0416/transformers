@@ -1,4 +1,4 @@
-from transformers import VoxtralForConditionalGeneration
+from transformers import VoxtralForConditionalGeneration, AutoProcessor
 from transformers.cache_utils import DynamicCache
 import torch
 from torch.export import Dim, ShapesCollection
@@ -6,7 +6,118 @@ from torch.export._trace import _export
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 repo_id = "mistralai/Voxtral-Mini-3B-2507"
+
+processor = AutoProcessor.from_pretrained(repo_id)
 model = VoxtralForConditionalGeneration.from_pretrained(repo_id, torch_dtype=torch.bfloat16, device_map=device)
+conversation = [
+    {
+        "role": "user",
+        "content": [
+            {
+                "type": "audio",
+                "url": "https://huggingface.co/datasets/eustlb/audio-samples/resolve/main/dude_where_is_my_car.wav",
+            },
+            {"type": "text", "text": "What can you tell me about this audio?"},
+        ],
+    }
+]
+
+inputs = processor.apply_chat_template(conversation)
+inputs = inputs.to(device, dtype=torch.bfloat16)
+#### export the full model ####
+input_ids = inputs["input_ids"]
+input_features = inputs["input_features"]
+attention_mask = inputs["attention_mask"]
+seq_length = input_ids.shape[1]
+position_ids = torch.arange(0, seq_length, dtype=torch.int64, device=device).unsqueeze(0)
+cache_position = torch.arange(0, seq_length, dtype=torch.int64, device=device)
+sample_kwargs = {
+    "input_ids": input_ids, 
+    "input_features": input_features,
+    "attention_mask": attention_mask, 
+    "position_ids": position_ids,
+    "past_key_values": DynamicCache(),
+    "inputs_embeds": None,
+    "labels": None,
+    "use_cache": True, 
+    "cache_position": cache_position,
+    "logits_to_keep": 1
+}
+
+eager_out = model(**sample_kwargs)
+past_key_values = eager_out.past_key_values
+
+# specify dynamic shapes
+shapes = ShapesCollection()
+seq_len = Dim("seq_len")
+for ix in range(len(past_key_values)):
+    shapes[past_key_values.layers[ix].keys] = (Dim.STATIC, Dim.STATIC, seq_len, Dim.STATIC)
+    shapes[past_key_values.layers[ix].values] = (Dim.STATIC, Dim.STATIC, seq_len, Dim.STATIC)
+
+shapes[input_ids] = (Dim.STATIC, Dim.AUTO)
+shapes[attention_mask] = (Dim.STATIC, Dim.AUTO)
+shapes[position_ids] = (Dim.STATIC, Dim.AUTO)
+shapes[cache_position] = (Dim.AUTO,)
+
+# sample_kwargs["past_key_values"] = past_key_values
+
+ep = _export(
+    mod=model, 
+    args=(), 
+    kwargs=sample_kwargs, 
+    pre_dispatch=False,
+    dynamic_shapes=shapes,
+    strict=False
+)
+ep_out = ep.module()(**sample_kwargs)
+
+if torch.allclose(eager_out.logits, ep_out.logits):
+    print("Exported model is correct!")
+else:
+    print("Exported model is incorrect!")
+
+print("verify dynamic shape works for full model export")
+conversation_1 = [
+    {
+        "role": "user",
+        "content": [
+            {
+                "type": "audio",
+                "url": "https://huggingface.co/datasets/eustlb/audio-samples/resolve/main/dude_where_is_my_car.wav",
+            },
+            {"type": "text", "text": "This is a different prompt, what can you tell me about this audio from the link above?"},
+        ],
+    }
+]
+
+inputs = processor.apply_chat_template(conversation_1)
+inputs = inputs.to(device, dtype=torch.bfloat16)
+input_ids = inputs["input_ids"]
+input_features = inputs["input_features"]
+attention_mask = inputs["attention_mask"]
+seq_length = input_ids.shape[1]
+position_ids = torch.arange(0, seq_length, dtype=torch.int64, device=device).unsqueeze(0)
+cache_position = torch.arange(0, seq_length, dtype=torch.int64, device=device)
+sample_kwargs_1 = {
+    "input_ids": input_ids, 
+    "input_features": input_features,
+    "attention_mask": attention_mask, 
+    "position_ids": position_ids,
+    "past_key_values": past_key_values,
+    "inputs_embeds": None,
+    "labels": None,
+    "use_cache": True, 
+    "cache_position": cache_position,
+    "logits_to_keep": 1
+}
+
+eager_out_1 = model(**sample_kwargs_1)
+ep_out_1 = ep.module()(**sample_kwargs_1)
+
+if torch.allclose(eager_out.logits, ep_out.logits):
+    print("Exported model is correct!")
+else:
+    print("Exported model is incorrect!")
 
 #### export the language model ####
 language_model = model.language_model
