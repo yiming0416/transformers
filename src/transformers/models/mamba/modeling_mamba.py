@@ -39,6 +39,10 @@ from .configuration_mamba import MambaConfig
 
 logger = logging.get_logger(__name__)
 
+if is_mambapy_available():
+    from mambapy.pscan import pscan
+else:
+    pscan = None
 
 if is_mamba_ssm_available():
     from mamba_ssm.ops.selective_scan_interface import mamba_inner_fn, selective_scan_fn
@@ -330,10 +334,6 @@ class MambaMixer(nn.Module):
 
     # fmt: off
     def slow_forward(self, input_states, cache_params: Optional[MambaCache]=None, cache_position:Optional[torch.LongTensor]=None, attention_mask: Optional[torch.LongTensor] = None):
-        if is_mambapy_available():
-            from mambapy.pscan import pscan
-        else:
-            pscan = None
         batch_size, seq_len, _ = input_states.shape
         dtype = input_states.dtype
         # 1. Gated MLP's linear projection
@@ -495,8 +495,6 @@ class MambaPreTrainedModel(PreTrainedModel):
             A = torch.arange(1, module.ssm_state_size + 1, dtype=torch.float32)[None, :]
             A = A.expand(module.intermediate_size, -1).contiguous()
             module.A_log.copy_(torch.log(A))
-            module.A_log._no_weight_decay = True
-            module.D._no_weight_decay = True
             module.D.data.fill_(1.0)
 
             dt_init_std = self.config.time_step_rank**-0.5 * self.config.time_step_scale

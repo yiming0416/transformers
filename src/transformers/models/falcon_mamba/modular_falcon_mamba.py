@@ -192,6 +192,12 @@ class FalconMambaConfig(MambaConfig):
             **kwargs,
         )
         self.mixer_rms_eps = mixer_rms_eps
+        # This is needed since mamba overrides the intermediate_size attribute
+        self.intermediate_size = (
+            int(expand * self.hidden_size)
+            if kwargs.get("intermediate_size") is None
+            else kwargs.get("intermediate_size")
+        )
 
 
 class FalconMambaCache(MambaCache):
@@ -511,7 +517,7 @@ class FalconMambaCausalLMOutput(MambaCausalLMOutput):
 
 class FalconMambaModel(MambaModel, FalconMambaPreTrainedModel):
     def __init__(self, config):
-        FalconMambaPreTrainedModel.__init__(config)
+        FalconMambaPreTrainedModel.__init__(self, config)
 
         self.embeddings = nn.Embedding(config.vocab_size, config.hidden_size)
         self.layers = nn.ModuleList(

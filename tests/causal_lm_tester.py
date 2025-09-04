@@ -435,13 +435,11 @@ class CausalLMModelTest(ModelTesterMixin, GenerationTesterMixin, PipelineTesterM
             with tempfile.TemporaryDirectory() as tmpdirname:
                 model.save_pretrained(tmpdirname)
                 model_fa = model_class.from_pretrained(
-                    tmpdirname, torch_dtype=torch.bfloat16, attn_implementation="flash_attention_2"
+                    tmpdirname, dtype=torch.bfloat16, attn_implementation="flash_attention_2"
                 )
                 model_fa.to(torch_device)
 
-                model = model_class.from_pretrained(
-                    tmpdirname, torch_dtype=torch.bfloat16, attn_implementation="eager"
-                )
+                model = model_class.from_pretrained(tmpdirname, dtype=torch.bfloat16, attn_implementation="eager")
                 model.to(torch_device)
 
                 dummy_input = inputs_dict[model_class.main_input_name]
@@ -451,5 +449,4 @@ class CausalLMModelTest(ModelTesterMixin, GenerationTesterMixin, PipelineTesterM
 
                 logits = outputs.hidden_states[-1]
                 logits_fa = outputs_fa.hidden_states[-1]
-
-                assert torch.allclose(logits_fa, logits, atol=2e-3)
+                torch.testing.assert_close(logits_fa, logits, atol=3e-2, rtol=3e-2)

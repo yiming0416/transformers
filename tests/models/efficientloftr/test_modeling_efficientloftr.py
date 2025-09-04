@@ -50,7 +50,7 @@ class EfficientLoFTRModelTester:
         image_width=80,
         image_height=60,
         stage_num_blocks: list[int] = [1, 1, 1],
-        out_features: list[int] = [32, 32, 64],
+        out_features: list[int] = [32, 32, 128],
         stage_stride: list[int] = [2, 1, 2],
         q_aggregation_kernel_size: int = 1,
         kv_aggregation_kernel_size: int = 1,
@@ -58,7 +58,7 @@ class EfficientLoFTRModelTester:
         kv_aggregation_stride: int = 1,
         num_attention_layers: int = 2,
         num_attention_heads: int = 8,
-        hidden_size: int = 64,
+        hidden_size: int = 128,
         coarse_matching_threshold: float = 0.0,
         fine_kernel_size: int = 2,
         coarse_matching_border_removal: int = 0,
@@ -216,7 +216,7 @@ class EfficientLoFTRModelTest(ModelTesterMixin, unittest.TestCase):
 
             self.assertListEqual(
                 list(hidden_states[0].shape[-2:]),
-                [self.model_tester.image_height // 2, self.model_tester.image_width // 2],
+                [self.model_tester.image_height, self.model_tester.image_width],
             )
 
         config, inputs_dict = self.model_tester.prepare_config_and_inputs_for_common()
@@ -273,7 +273,7 @@ class EfficientLoFTRModelTest(ModelTesterMixin, unittest.TestCase):
 
     @slow
     def test_model_from_pretrained(self):
-        from_pretrained_ids = ["stevenbucaille/efficientloftr"]
+        from_pretrained_ids = ["zju-community/efficientloftr"]
         for model_name in from_pretrained_ids:
             model = EfficientLoFTRForKeypointMatching.from_pretrained(model_name)
             self.assertIsNotNone(model)
@@ -414,12 +414,12 @@ def prepare_imgs():
 class EfficientLoFTRModelIntegrationTest(unittest.TestCase):
     @cached_property
     def default_image_processor(self):
-        return AutoImageProcessor.from_pretrained("stevenbucaille/efficientloftr") if is_vision_available() else None
+        return AutoImageProcessor.from_pretrained("zju-community/efficientloftr") if is_vision_available() else None
 
     @slow
     def test_inference(self):
         model = EfficientLoFTRForKeypointMatching.from_pretrained(
-            "stevenbucaille/efficientloftr", attn_implementation="eager"
+            "zju-community/efficientloftr", attn_implementation="eager"
         ).to(torch_device)
         preprocessor = self.default_image_processor
         images = prepare_imgs()
@@ -436,10 +436,10 @@ class EfficientLoFTRModelIntegrationTest(unittest.TestCase):
         expected_matching_scores_shape = torch.Size((len(images), 2, expected_number_of_matches))
 
         expected_top10_matches_indices = torch.tensor(
-            [3145, 3065, 3143, 3066, 3144, 1397, 1705, 3151, 2342, 2422], dtype=torch.int64, device=torch_device
+            [3145, 3065, 3143, 3144, 1397, 1705, 3151, 2422, 3066, 2342], dtype=torch.int64, device=torch_device
         )
         expected_top10_matching_scores = torch.tensor(
-            [0.9997, 0.9996, 0.9996, 0.9995, 0.9995, 0.9995, 0.9994, 0.9994, 0.9994, 0.9994], device=torch_device
+            [0.9998, 0.9997, 0.9997, 0.9996, 0.9996, 0.9996, 0.9996, 0.9995, 0.9995, 0.9995], device=torch_device
         )
 
         self.assertEqual(outputs.matches.shape, expected_matches_shape)
